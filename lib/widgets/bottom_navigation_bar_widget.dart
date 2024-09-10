@@ -19,10 +19,6 @@ class BottomNavigationBarWidget extends StatelessWidget {
           icon: Icon(Icons.history),
           label: 'Riwayat',
         ),
-        // BottomNavigationBarItem(
-        //   icon: Icon(Icons.insights),
-        //   label: 'Wawasan',
-        // ),
         BottomNavigationBarItem(
           icon: Icon(Icons.person),
           label: 'Saya',

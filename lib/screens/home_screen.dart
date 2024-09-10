@@ -10,13 +10,16 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen>
     with SingleTickerProviderStateMixin {
-  int _ml = 220; // Initial amount in ml
-  double _waveAmplitude = 10; // Initial wave amplitude
+  int _ml = 0;
+  int _waveHeight = 150;
+  int _target = 1220;
+  double _waveAmplitude = 10;
 
   void _increaseDrink() {
     setState(() {
-      _ml += 50; // Increase by 50 ml
-      _waveAmplitude += 5; // Increase wave amplitude
+      _ml += 50;
+      _waveHeight += 50;
+      _waveAmplitude += 5;
     });
   }
 
@@ -28,9 +31,7 @@ class _HomeScreenState extends State<HomeScreen>
         children: [
           SizedBox(height: 100),
           TweenAnimationBuilder<int>(
-            tween: IntTween(
-                begin: _ml - 50,
-                end: _ml), // Animate from previous value to new value
+            tween: IntTween(begin: _ml - 50, end: _ml),
             duration: Duration(milliseconds: 1000),
             builder: (context, value, child) {
               return Text(
@@ -44,6 +45,14 @@ class _HomeScreenState extends State<HomeScreen>
             },
           ),
           SizedBox(height: 10),
+          Text(
+            'Target Harian: $_target ml',
+            style: TextStyle(
+              fontSize: 20,
+              color: Colors.grey[700],
+            ),
+          ),
+          SizedBox(height: 5),
           Text(
             'Pengingat Berikutnya: 06:00, Besok',
             style: TextStyle(
@@ -60,19 +69,16 @@ class _HomeScreenState extends State<HomeScreen>
             ),
           ),
           SizedBox(height: 50),
-
-          // Stack for the WaveWidget and BottomNavigationBarWidget
           Expanded(
             child: Stack(
               children: [
-                // WaveWidget positioned at the bottom
                 Align(
                   alignment: Alignment.bottomCenter,
                   child: AnimatedContainer(
                     duration: Duration(milliseconds: 500),
                     curve: Curves.easeInOut,
-                    color: Colors.transparent, // Transparent background
-                    height: double.parse(_ml.toString()),
+                    color: Colors.transparent,
+                    height: double.parse(_waveHeight.toString()),
                     child: WaveWidget(
                       config: CustomConfig(
                         colors: [
@@ -88,26 +94,25 @@ class _HomeScreenState extends State<HomeScreen>
                         ], // Variasi ketinggian
                         blur: MaskFilter.blur(BlurStyle.solid, 10),
                       ),
-                      size: Size(double.infinity,
-                          double.parse(_ml.toString())), // Tinggi gelombang
-                      waveAmplitude: _waveAmplitude, // Dynamic wave amplitude
+                      size: Size(
+                          double.infinity,
+                          double.parse(
+                              _waveHeight.toString())), // Tinggi gelombang
+                      waveAmplitude: _waveAmplitude,
                     ),
                   ),
                 ),
-                // BottomNavigationBar positioned at the bottom
                 Align(
                   alignment: Alignment.bottomCenter,
                   child: BottomNavigationBarWidget(),
                 ),
-                // Content area with ElevatedButton on top
                 Align(
                   alignment: Alignment.bottomCenter,
                   child: Padding(
                     padding: const EdgeInsets.symmetric(horizontal: 20.0),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.center,
-                      mainAxisAlignment:
-                          MainAxisAlignment.end, // Atur tombol di bawah
+                      mainAxisAlignment: MainAxisAlignment.end,
                       children: [
                         ElevatedButton(
                           onPressed: _increaseDrink,
@@ -128,9 +133,7 @@ class _HomeScreenState extends State<HomeScreen>
                             ),
                           ),
                         ),
-                        SizedBox(
-                            height:
-                                100), // Spasi setelah tombol jika diperlukan
+                        SizedBox(height: 100),
                       ],
                     ),
                   ),
