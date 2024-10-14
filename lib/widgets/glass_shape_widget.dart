@@ -3,9 +3,7 @@ import 'package:wave/wave.dart';
 import 'package:wave/config.dart';
 
 class GlassShapeWidget extends StatelessWidget {
-  final int volume;
-
-  const GlassShapeWidget({Key? key, required this.volume}) : super(key: key);
+  const GlassShapeWidget({Key? key}) : super(key: key);
 
   @override
   Widget build(BuildContext context) {
@@ -33,37 +31,6 @@ class GlassShapeWidget extends StatelessWidget {
             ),
           ),
         ),
-        Positioned(
-          bottom: 80,
-          child: Text(
-            '$volume ml',
-            style: TextStyle(
-              fontSize: 20,
-              fontWeight: FontWeight.bold,
-              color: Colors.white70,
-            ),
-          ),
-        ),
-        Positioned(
-            bottom: 7,
-            child: ElevatedButton(
-              onPressed: () {},
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.lightBlue[500]!,
-                padding: EdgeInsets.symmetric(horizontal: 5, vertical: 5),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(30),
-                ),
-              ),
-              child: Text(
-                'Atur Volume Air',
-                style: TextStyle(
-                  fontSize: 10,
-                  fontWeight: FontWeight.bold,
-                  color: Colors.white70,
-                ),
-              ),
-            )),
       ],
     );
   }
