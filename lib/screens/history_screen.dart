@@ -19,11 +19,20 @@ class _HistoryScreenState extends State<HistoryScreen> {
   DateTime _today = DateTime.now(); // To compare with today's date
   List<Map<String, dynamic>> _drinkLogs = [];
   int _ml = 0;
+  int targetHarian = 0;
 
   @override
   void initState() {
     super.initState();
-    _loadDrinkLog(); // Load logs when the screen is initialized
+    _loadDrinkLog();
+    _loadTargetHarian(); // Load logs when the screen is initialized
+  }
+
+  void _loadTargetHarian() async {
+    SharedPreferences prefs = await SharedPreferences.getInstance();
+    setState(() {
+      targetHarian = prefs.getInt('targetHarian') ?? targetHarian;
+    });
   }
 
   void _loadDrinkLog() async {
@@ -277,7 +286,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
                         Spacer(),
                         if (_selectedTab == "HARI")
                           Text(
-                            '2700 ml',
+                            '$targetHarian ml',
                             style: TextStyle(
                               fontSize: screenWidth * 0.05,
                               color: Colors.white,

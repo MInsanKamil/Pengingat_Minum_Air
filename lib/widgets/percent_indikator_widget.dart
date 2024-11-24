@@ -45,3 +45,22 @@ class ArrowClipper extends CustomClipper<Path> {
     return false;
   }
 }
+
+class InvertedArrowClipper extends CustomClipper<Path> {
+  @override
+  Path getClip(Size size) {
+    Path path = Path();
+    path.moveTo(size.width, 0); // Starting point at the top right corner
+    path.lineTo(20, 0); // Top line of the arrow
+    path.lineTo(0, size.height / 2); // Arrow tip pointing left
+    path.lineTo(20, size.height); // Bottom line of the arrow
+    path.lineTo(size.width, size.height); // Bottom right corner
+    path.close(); // Closing the path
+    return path;
+  }
+
+  @override
+  bool shouldReclip(CustomClipper<Path> oldClipper) {
+    return false;
+  }
+}

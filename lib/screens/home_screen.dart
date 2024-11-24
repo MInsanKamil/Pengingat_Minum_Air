@@ -18,13 +18,28 @@ class _HomeScreenState extends State<HomeScreen>
   int _ml = 0;
   int _waveHeight = 150;
   int _volume = 200;
-  int _target = 2700;
+  int _target = 0;
   double _waveAmplitude = 10;
-
+  int totalTercapai = 0;
+  DateTime? _lastAchievementDate;
   @override
   void initState() {
     super.initState();
-    _loadLatestDrinkLog(); // Memuat data minuman saat inisialisasi
+    _loadLatestDrinkLog();
+    _loadTargetHarian();
+  }
+
+  bool _isSameDay(DateTime date1, DateTime date2) {
+    return date1.year == date2.year &&
+        date1.month == date2.month &&
+        date1.day == date2.day;
+  }
+
+  void _loadTargetHarian() async {
+    SharedPreferences prefs = await SharedPreferences.getInstance();
+    setState(() {
+      _target = prefs.getInt('targetHarian') ?? _target;
+    });
   }
 
   void _increaseDrink() async {
@@ -54,6 +69,72 @@ class _HomeScreenState extends State<HomeScreen>
 
     // Simpan kembali ke SharedPreferences
     await prefs.setStringList('drinkLog', drinkLog);
+    String? lastAchievementDateStr = prefs.getString('lastAchievementDate');
+    if (lastAchievementDateStr != null) {
+      _lastAchievementDate = DateTime.parse(lastAchievementDateStr);
+    } else {
+      _lastAchievementDate =
+          null; // Pastikan untuk menginisialisasi dengan null
+    }
+    print(
+        'Current ML: $_ml, Target: $_target, Last Achievement Date: $_lastAchievementDate');
+    // Cek pencapaian target harian
+    if (_ml >= _target &&
+        (_lastAchievementDate == null ||
+            !_isSameDay(_lastAchievementDate!, DateTime.now()))) {
+      totalTercapai = prefs.getInt('totalTercapai') ?? 0;
+      totalTercapai++;
+      _lastAchievementDate = DateTime.now();
+
+      // Simpan total pencapaian dan tanggal terakhir tercapai ke SharedPreferences
+      await prefs.setInt('totalTercapai', totalTercapai);
+      await prefs.setString(
+          'lastAchievementDate', _lastAchievementDate!.toIso8601String());
+    }
+  }
+
+  void _undoDrink() async {
+    SharedPreferences prefs = await SharedPreferences.getInstance();
+    List<String> drinkLog = prefs.getStringList('drinkLog') ?? [];
+
+    // Filter logs for today
+    DateTime today = DateTime.now();
+    String todayString =
+        DateTime(today.year, today.month, today.day).toIso8601String();
+
+    // Remove the latest log for today
+    if (drinkLog.isNotEmpty) {
+      Map<String, dynamic> lastLog = jsonDecode(drinkLog.last);
+      DateTime logDate = DateTime.parse(lastLog['time']);
+      String logDateString =
+          DateTime(logDate.year, logDate.month, logDate.day).toIso8601String();
+
+      if (logDateString == todayString) {
+        drinkLog.removeLast(); // Remove the last log
+        await prefs.setStringList('drinkLog', drinkLog); // Save back
+
+        // Update state
+        int lastMl = lastLog['ml'] as int;
+        int lastVolume = lastLog['volume'] as int; // Cast to int
+        setState(() {
+          _ml -= lastVolume; // Update _ml
+          _waveHeight -= (lastVolume / 10).round() as int; // Update wave height
+          _waveAmplitude -=
+              (lastVolume / 40).round() as int; // Update wave amplitude
+        });
+
+        // Check if we need to decrement totalTercapai
+        if (_ml < _target && lastMl >= _target) {
+          await prefs.remove('lastAchievementDate');
+          totalTercapai = prefs.getInt('totalTercapai') ?? 0;
+          if (totalTercapai > 0) {
+            totalTercapai--;
+            await prefs.setInt(
+                'totalTercapai', totalTercapai); // Update totalTercapai
+          }
+        }
+      }
+    }
   }
 
   void _loadLatestDrinkLog() async {
@@ -109,45 +190,6 @@ class _HomeScreenState extends State<HomeScreen>
         _volume = 200;
         _waveHeight = 150;
         _waveAmplitude = 10;
-      });
-    }
-  }
-
-  void _showVolumeDialog() async {
-    int? newVolume = await showDialog<int>(
-      context: context,
-      builder: (BuildContext context) {
-        int tempVolume = _volume;
-        return AlertDialog(
-          title: Text('Atur Volume Air'),
-          content: TextField(
-            keyboardType: TextInputType.number,
-            decoration: InputDecoration(hintText: "Masukkan volume air (ml)"),
-            onChanged: (value) {
-              tempVolume = int.tryParse(value) ?? tempVolume;
-            },
-          ),
-          actions: <Widget>[
-            TextButton(
-              child: Text('Batal'),
-              onPressed: () {
-                Navigator.of(context).pop();
-              },
-            ),
-            TextButton(
-              child: Text('Simpan'),
-              onPressed: () {
-                Navigator.of(context).pop(tempVolume);
-              },
-            ),
-          ],
-        );
-      },
-    );
-
-    if (newVolume != null) {
-      setState(() {
-        _volume = newVolume;
       });
     }
   }
@@ -329,6 +371,45 @@ class _HomeScreenState extends State<HomeScreen>
                       ],
                     ),
                   ),
+                  Align(
+                    alignment: Alignment.bottomRight,
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.end,
+                      children: [
+                        ClipPath(
+                          clipper: InvertedArrowClipper(),
+                          child: ElevatedButton(
+                            onPressed: _undoDrink,
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor:
+                                  const Color.fromARGB(255, 247, 96, 96),
+                              padding: EdgeInsets.only(
+                                left: size.width * 0.05,
+                                right: size.width * 0.01,
+                              ),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(0),
+                              ),
+                            ),
+                            child: Column(
+                              children: [
+                                Text(
+                                  'BATAL MINUM',
+                                  style: TextStyle(
+                                    fontFamily: 'RobotoMono',
+                                    fontSize: size.width * 0.04,
+                                    fontWeight: FontWeight.bold,
+                                    color: Colors.white70,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                        SizedBox(height: size.height * 0.35),
+                      ],
+                    ),
+                  ),
                 ],
               ),
             ),
@@ -336,5 +417,84 @@ class _HomeScreenState extends State<HomeScreen>
         ),
       ),
     );
+  }
+
+  void _showVolumeDialog() async {
+    int? newVolume = await showModalBottomSheet<int>(
+      context: context,
+      isScrollControlled:
+          true, // Untuk mengizinkan dialog memenuhi layar lebih banyak jika diperlukan
+      builder: (BuildContext context) {
+        int tempVolume = _volume;
+        return Padding(
+          padding: EdgeInsets.only(
+            bottom: MediaQuery.of(context)
+                .viewInsets
+                .bottom, // Mengatur agar tidak tertutup keyboard
+          ),
+          child: Container(
+            padding: const EdgeInsets.all(16.0),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: <Widget>[
+                Text(
+                  'Atur Volume Air',
+                  style: TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.blue[500]),
+                ),
+                TextField(
+                  keyboardType: TextInputType.number,
+                  decoration: InputDecoration(
+                    hintText: "Masukkan volume air (ml)",
+                    hintStyle: TextStyle(color: Colors.blue[500]),
+                    enabledBorder: UnderlineInputBorder(
+                      borderSide:
+                          BorderSide(color: Colors.blue[500]!), // Custom color
+                    ),
+                    // Customize the underline when the field is focused
+                    focusedBorder: UnderlineInputBorder(
+                      borderSide: BorderSide(
+                          color: Colors.blue[700]!,
+                          width: 2.0), // Custom color and width
+                    ),
+                  ),
+                  onChanged: (value) {
+                    tempVolume = int.tryParse(value) ?? tempVolume;
+                  },
+                ),
+                SizedBox(height: 16),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.end,
+                  children: <Widget>[
+                    TextButton(
+                      child: Text('Batal',
+                          style: TextStyle(color: Colors.blue[500])),
+                      onPressed: () {
+                        Navigator.of(context).pop();
+                      },
+                    ),
+                    TextButton(
+                      child: Text('Simpan',
+                          style: TextStyle(color: Colors.blue[500])),
+                      onPressed: () {
+                        Navigator.of(context).pop(tempVolume);
+                      },
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+
+    if (newVolume != null) {
+      setState(() {
+        _volume = newVolume;
+      });
+    }
   }
 }

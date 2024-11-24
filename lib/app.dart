@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'screens/home_screen.dart';
 import 'screens/history_screen.dart';
+import 'screens/profil_screen.dart';
 import 'widgets/bottom_navigation_bar_widget.dart';
 
 class MainNavigation extends StatefulWidget {
@@ -15,7 +16,7 @@ class _MainNavigationState extends State<MainNavigation> {
   final List<Widget> _screens = [
     HomeScreen(), // Layar Home
     HistoryScreen(), // Layar Riwayat
-    Center(child: Text('Layar Profil')),
+    ProfileScreen()
   ];
 
   void _onTabTapped(int index) {
