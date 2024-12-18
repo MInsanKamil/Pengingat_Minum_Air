@@ -2,7 +2,7 @@ class Drinkslog {
   late int volume;
   late String time;
   late int ml;
-  late double waveHeight;
+  late int waveHeight;
   late double waveAmplitude;
 
   Drinkslog(

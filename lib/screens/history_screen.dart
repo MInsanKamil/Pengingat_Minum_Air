@@ -436,13 +436,13 @@ class _HistoryScreenState extends State<HistoryScreen> {
                           extraLinesData: ExtraLinesData(
                             horizontalLines: [
                               HorizontalLine(
-                                y: 2700,
+                                y: targetHarian.toDouble(),
                                 color: Colors.lightBlueAccent,
                                 strokeWidth: 2,
                                 dashArray: [5, 5],
                                 label: HorizontalLineLabel(
                                   show: true,
-                                  labelResolver: (line) => '2700 ml',
+                                  labelResolver: (line) => '${targetHarian} ml',
                                   alignment: Alignment.topRight,
                                   style: TextStyle(
                                     color: Colors.white,
@@ -458,7 +458,8 @@ class _HistoryScreenState extends State<HistoryScreen> {
                               : _selectedTab == "BULAN"
                                   ? 4 // Untuk tab BULAN, max X adalah 4 minggu
                                   : 24, // Untuk tab HARI, max X adalah 24 jam
-                          maxY: 4000,
+                          maxY: max(4000,
+                              max(targetHarian.toDouble(), _ml.toDouble())),
                           minY: 0,
                         ),
                       ),

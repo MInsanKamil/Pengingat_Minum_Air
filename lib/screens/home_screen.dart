@@ -1,7 +1,10 @@
 import 'dart:math';
 import 'dart:convert'; // Untuk encode/decode list ke string
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:wdrink_reminder/services/notification_service.dart';
+import '../models/drinklog.dart';
 import '../widgets/glass_shape_widget.dart';
 import '../widgets/percent_indikator_widget.dart';
 import 'package:wave/wave.dart';
@@ -19,20 +22,68 @@ class _HomeScreenState extends State<HomeScreen>
   int _waveHeight = 150;
   int _volume = 200;
   int _target = 0;
+  String errorMessage = '';
+  bool isStopReminder = false;
   double _waveAmplitude = 10;
-  int totalTercapai = 0;
-  DateTime? _lastAchievementDate;
+  late Future<DateTime?> _nextNotificationFuture;
   @override
   void initState() {
     super.initState();
     _loadLatestDrinkLog();
     _loadTargetHarian();
+    _loadPreferences();
+    _nextNotificationFuture = _getNextNotificationTime();
   }
 
-  bool _isSameDay(DateTime date1, DateTime date2) {
-    return date1.year == date2.year &&
-        date1.month == date2.month &&
-        date1.day == date2.day;
+  Future<DateTime?> _getNextNotificationTime() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      List<String> notificationTimes =
+          prefs.getStringList('notification_times') ?? [];
+
+      if (notificationTimes.isNotEmpty) {
+        // Parse semua waktu notifikasi
+        List<DateTime> parsedTimes = notificationTimes
+            .map((time) => DateTime.parse(time).toLocal())
+            .toList();
+
+        // Filter waktu yang sudah lewat
+        DateTime now = DateTime.now();
+        parsedTimes.removeWhere((time) => time.isBefore(now));
+
+        // Update daftar waktu yang masih valid ke SharedPreferences
+        await prefs.setStringList(
+          'notification_times',
+          parsedTimes.map((time) => time.toUtc().toIso8601String()).toList(),
+        );
+
+        if (parsedTimes.isNotEmpty) {
+          // Ambil waktu terdekat yang tersisa
+          DateTime nextTime = parsedTimes.first;
+          return nextTime;
+        }
+      }
+      return null;
+    } catch (e) {
+      return null;
+    }
+  }
+
+  Future<void> _loadPreferences() async {
+    try {
+      SharedPreferences prefs = await SharedPreferences.getInstance();
+      setState(() {
+        isStopReminder = prefs.getBool('isStopReminder') ?? isStopReminder;
+      });
+    } catch (e) {
+      // Opsional: Menampilkan pesan error kepada pengguna
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text("Gagal memuat preferensi"),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
   }
 
   void _loadTargetHarian() async {
@@ -44,6 +95,16 @@ class _HomeScreenState extends State<HomeScreen>
 
   void _increaseDrink() async {
     SharedPreferences prefs = await SharedPreferences.getInstance();
+
+    if (_ml >= _target) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text("Anda sudah mencapai batas target harian"),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
 
     setState(() {
       _ml += _volume;
@@ -69,27 +130,13 @@ class _HomeScreenState extends State<HomeScreen>
 
     // Simpan kembali ke SharedPreferences
     await prefs.setStringList('drinkLog', drinkLog);
-    String? lastAchievementDateStr = prefs.getString('lastAchievementDate');
-    if (lastAchievementDateStr != null) {
-      _lastAchievementDate = DateTime.parse(lastAchievementDateStr);
-    } else {
-      _lastAchievementDate =
-          null; // Pastikan untuk menginisialisasi dengan null
-    }
-    print(
-        'Current ML: $_ml, Target: $_target, Last Achievement Date: $_lastAchievementDate');
-    // Cek pencapaian target harian
-    if (_ml >= _target &&
-        (_lastAchievementDate == null ||
-            !_isSameDay(_lastAchievementDate!, DateTime.now()))) {
-      totalTercapai = prefs.getInt('totalTercapai') ?? 0;
-      totalTercapai++;
-      _lastAchievementDate = DateTime.now();
 
-      // Simpan total pencapaian dan tanggal terakhir tercapai ke SharedPreferences
-      await prefs.setInt('totalTercapai', totalTercapai);
-      await prefs.setString(
-          'lastAchievementDate', _lastAchievementDate!.toIso8601String());
+    if (isStopReminder && _ml >= _target) {
+      await NotificationHelper.cancelAllNotifications();
+      await prefs.remove('notification_times');
+      setState(() {
+        _nextNotificationFuture = _getNextNotificationTime();
+      });
     }
   }
 
@@ -122,83 +169,65 @@ class _HomeScreenState extends State<HomeScreen>
           _waveAmplitude -=
               (lastVolume / 40).round() as int; // Update wave amplitude
         });
-
-        // Check if we need to decrement totalTercapai
-        if (_ml < _target && lastMl >= _target) {
-          await prefs.remove('lastAchievementDate');
-          totalTercapai = prefs.getInt('totalTercapai') ?? 0;
-          if (totalTercapai > 0) {
-            totalTercapai--;
-            await prefs.setInt(
-                'totalTercapai', totalTercapai); // Update totalTercapai
-          }
-        }
       }
     }
   }
 
   void _loadLatestDrinkLog() async {
+    // Nilai default
+    int defaultMl = 0;
+    int defaultVolume = 200;
+    int defaultWaveHeight = 150;
+    double defaultWaveAmplitude = 10;
+
     SharedPreferences prefs = await SharedPreferences.getInstance();
     List<String>? drinkLog = prefs.getStringList('drinkLog');
 
+    Drinkslog latestTodayLog;
+
     if (drinkLog != null && drinkLog.isNotEmpty) {
-      // Dapatkan tanggal hari ini
       DateTime today = DateTime.now();
-      String todayString =
-          DateTime(today.year, today.month, today.day).toIso8601String();
-
-      // Cari log terakhir yang sesuai dengan hari ini
-      Map<String, dynamic>? latestTodayLog;
-
-      for (String logEntry in drinkLog.reversed) {
-        // Loop dari yang terbaru
-        Map<String, dynamic> log = jsonDecode(logEntry);
-
-        // Ambil tanggal dari log dan samakan dengan hari ini
-        DateTime logDate = DateTime.parse(log['time']);
-        String logDateString =
-            DateTime(logDate.year, logDate.month, logDate.day)
-                .toIso8601String();
-
-        if (logDateString == todayString) {
-          latestTodayLog = log;
-          break;
-        }
-      }
-
-      // Jika ditemukan log untuk hari ini, gunakan datanya
-      if (latestTodayLog != null) {
-        setState(() {
-          _ml = latestTodayLog!['ml'];
-          _volume = latestTodayLog['volume'];
-          _waveHeight = latestTodayLog['waveHeight'];
-          _waveAmplitude = latestTodayLog['waveAmplitude'];
-        });
-      } else {
-        // Jika tidak ada log hari ini, set nilai ke 0
-        setState(() {
-          _ml = 0;
-          _volume = 200;
-          _waveHeight = 150;
-          _waveAmplitude = 10;
-        });
-      }
+      latestTodayLog = drinkLog.reversed
+          .map((entry) => Drinkslog.fromJson(jsonDecode(entry)))
+          .firstWhere(
+        (log) {
+          DateTime logDate = DateTime.parse(log.time);
+          return logDate.year == today.year &&
+              logDate.month == today.month &&
+              logDate.day == today.day;
+        },
+        orElse: () => Drinkslog(
+          volume: defaultVolume,
+          time: today.toIso8601String(),
+          ml: defaultMl,
+          waveHeight: defaultWaveHeight,
+          waveAmplitude: defaultWaveAmplitude,
+        ),
+      );
     } else {
-      // Jika log kosong, set nilai ke 0
-      setState(() {
-        _ml = 0;
-        _volume = 200;
-        _waveHeight = 150;
-        _waveAmplitude = 10;
-      });
+      // Jika tidak ada log sama sekali, gunakan objek default
+      latestTodayLog = Drinkslog(
+        volume: defaultVolume,
+        time: DateTime.now().toIso8601String(),
+        ml: defaultMl,
+        waveHeight: defaultWaveHeight,
+        waveAmplitude: defaultWaveAmplitude,
+      );
     }
+
+    setState(() {
+      _ml = latestTodayLog.ml;
+      _volume = latestTodayLog.volume;
+      _waveHeight = latestTodayLog.waveHeight;
+      _waveAmplitude = latestTodayLog.waveAmplitude;
+    });
   }
 
   @override
   Widget build(BuildContext context) {
     // Mendapatkan ukuran layar
     final size = MediaQuery.of(context).size;
-
+    _loadTargetHarian();
     return Scaffold(
       backgroundColor: Colors.lightBlueAccent,
       body: SafeArea(
@@ -245,21 +274,46 @@ class _HomeScreenState extends State<HomeScreen>
               ),
             ),
             SizedBox(height: size.height * 0.01),
-            Text(
-              'Pengingat Berikutnya: 06:00, Besok',
-              style: TextStyle(
-                fontSize: size.width * 0.04,
-                color: Colors.white70,
-              ),
+            FutureBuilder<DateTime?>(
+              future: _nextNotificationFuture,
+              builder: (context, snapshot) {
+                if (snapshot.connectionState == ConnectionState.waiting) {
+                  return CircularProgressIndicator(color: Colors.blue[500]);
+                } else if (snapshot.hasError) {
+                  return Text(
+                    'Error: ${snapshot.error}',
+                    style: TextStyle(fontSize: 16, color: Colors.red),
+                  );
+                } else if (snapshot.hasData) {
+                  final nextNotificationTime = snapshot.data!;
+                  final formattedTime =
+                      DateFormat('HH:mm').format(nextNotificationTime);
+                  final now = DateTime.now();
+                  final isTomorrow = nextNotificationTime.year > now.year ||
+                      (nextNotificationTime.year == now.year &&
+                          (nextNotificationTime.month > now.month ||
+                              (nextNotificationTime.month == now.month &&
+                                  nextNotificationTime.day > now.day)));
+
+                  return Text(
+                    'Pengingat Berikutnya: Pukul $formattedTime, ${isTomorrow ? 'Besok' : 'Hari Ini'}',
+                    style: TextStyle(
+                      fontSize: size.width * 0.04,
+                      color: Colors.white70,
+                    ),
+                  );
+                } else {
+                  return Text(
+                    'Tidak ada pengingat yang dijadwalkan',
+                    style: TextStyle(
+                      fontSize: size.width * 0.04,
+                      color: Colors.white70,
+                    ),
+                  );
+                }
+              },
             ),
             SizedBox(height: size.height * 0.01),
-            Text(
-              'Tidak ada pengingat hari ini',
-              style: TextStyle(
-                fontSize: size.width * 0.035,
-                color: Colors.white70,
-              ),
-            ),
             Expanded(
               child: Stack(
                 alignment: Alignment.center,
@@ -426,68 +480,93 @@ class _HomeScreenState extends State<HomeScreen>
           true, // Untuk mengizinkan dialog memenuhi layar lebih banyak jika diperlukan
       builder: (BuildContext context) {
         int tempVolume = _volume;
-        return Padding(
-          padding: EdgeInsets.only(
-            bottom: MediaQuery.of(context)
-                .viewInsets
-                .bottom, // Mengatur agar tidak tertutup keyboard
-          ),
-          child: Container(
-            padding: const EdgeInsets.all(16.0),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: <Widget>[
-                Text(
-                  'Atur Volume Air',
-                  style: TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.blue[500]),
-                ),
-                TextField(
-                  keyboardType: TextInputType.number,
-                  decoration: InputDecoration(
-                    hintText: "Masukkan volume air (ml)",
-                    hintStyle: TextStyle(color: Colors.blue[500]),
-                    enabledBorder: UnderlineInputBorder(
-                      borderSide:
-                          BorderSide(color: Colors.blue[500]!), // Custom color
-                    ),
-                    // Customize the underline when the field is focused
-                    focusedBorder: UnderlineInputBorder(
-                      borderSide: BorderSide(
-                          color: Colors.blue[700]!,
-                          width: 2.0), // Custom color and width
-                    ),
-                  ),
-                  onChanged: (value) {
-                    tempVolume = int.tryParse(value) ?? tempVolume;
-                  },
-                ),
-                SizedBox(height: 16),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.end,
-                  children: <Widget>[
-                    TextButton(
-                      child: Text('Batal',
-                          style: TextStyle(color: Colors.blue[500])),
-                      onPressed: () {
-                        Navigator.of(context).pop();
-                      },
-                    ),
-                    TextButton(
-                      child: Text('Simpan',
-                          style: TextStyle(color: Colors.blue[500])),
-                      onPressed: () {
-                        Navigator.of(context).pop(tempVolume);
-                      },
-                    ),
-                  ],
-                ),
-              ],
+        return StatefulBuilder(builder: (context, setStateModal) {
+          return Padding(
+            padding: EdgeInsets.only(
+              bottom: MediaQuery.of(context)
+                  .viewInsets
+                  .bottom, // Mengatur agar tidak tertutup keyboard
             ),
-          ),
-        );
+            child: Container(
+              padding: const EdgeInsets.all(16.0),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: <Widget>[
+                  Text(
+                    'Atur Volume Air',
+                    style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.blue[500]),
+                  ),
+                  TextField(
+                    keyboardType: TextInputType.number,
+                    decoration: InputDecoration(
+                      hintText: "Masukkan volume air (ml)",
+                      hintStyle: TextStyle(color: Colors.blue[500]),
+                      enabledBorder: UnderlineInputBorder(
+                        borderSide: BorderSide(
+                            color: Colors.blue[500]!), // Custom color
+                      ),
+                      // Customize the underline when the field is focused
+                      focusedBorder: UnderlineInputBorder(
+                        borderSide: BorderSide(
+                            color: Colors.blue[700]!,
+                            width: 2.0), // Custom color and width
+                      ),
+                    ),
+                    onChanged: (value) {
+                      if (int.tryParse(value)! <= 0) {
+                        setStateModal(() {
+                          errorMessage =
+                              "Volume air harus lebih besar dari 0 ml";
+                        });
+                      } else if (int.tryParse(value)! <= _target) {
+                        tempVolume = int.tryParse(value) ?? tempVolume;
+                        setStateModal(() {
+                          errorMessage = ''; // Clear error message
+                        });
+                      } else {
+                        setStateModal(() {
+                          errorMessage =
+                              "Volume air harus lebih kecil dari target harian";
+                        });
+                      }
+                    },
+                  ),
+                  if (errorMessage.isNotEmpty)
+                    Padding(
+                      padding: EdgeInsets.only(top: 1.0),
+                      child: Text(
+                        errorMessage,
+                        style: TextStyle(color: Colors.red),
+                      ),
+                    ),
+                  SizedBox(height: 16),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.end,
+                    children: <Widget>[
+                      TextButton(
+                        child: Text('Batal',
+                            style: TextStyle(color: Colors.blue[500])),
+                        onPressed: () {
+                          Navigator.of(context).pop();
+                        },
+                      ),
+                      TextButton(
+                        child: Text('Simpan',
+                            style: TextStyle(color: Colors.blue[500])),
+                        onPressed: () {
+                          Navigator.of(context).pop(tempVolume);
+                        },
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          );
+        });
       },
     );
 

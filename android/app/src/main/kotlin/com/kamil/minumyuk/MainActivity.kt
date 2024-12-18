@@ -1,4 +1,4 @@
-package com.example.wdrink_reminder
+package com.kamil.minumyuk
 
 import io.flutter.embedding.android.FlutterActivity
 
